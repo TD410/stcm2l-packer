@@ -1,0 +1,12 @@
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\bin\Debug\STCM2LPackerGUI.exe.config
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\bin\Debug\STCM2LPackerGUI.exe
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\bin\Debug\STCM2LPackerGUI.pdb
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\obj\Debug\STCM2LPacker.csprojResolveAssemblyReference.cache
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\obj\Debug\STCM2LPackerGUI.Properties.Resources.resources
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\obj\Debug\STCM2LPacker.csproj.GenerateResource.Cache
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\obj\Debug\STCM2LPacker.csproj.CoreCompileInputs.cache
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\obj\Debug\STCM2LPackerGUI.exe
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\obj\Debug\STCM2LPackerGUI.pdb
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\obj\Debug\STCM2LPacker.STCM2LPackerGUI.resources
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\bin\Debug\DocumentFormat.OpenXml.dll
+E:\Project\STCM2LPackerGUI\STCM2LPackerGUI\bin\Debug\DocumentFormat.OpenXml.xml
