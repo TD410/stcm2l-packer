@@ -1,3 +1,6 @@
 .vscode
 .idea
 .vs
+packages
+STCM2LPacker/bin
+STCM2LPacker/obj
