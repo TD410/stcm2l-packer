@@ -138,8 +138,9 @@ namespace STCM2LPacker
 				string[] opcodes = File.ReadAllLines(opcodeTableFile);
 				foreach (string opcode in opcodes)
 				{
+					if (opcode.StartsWith("//")) continue;
 					var parts = opcode.Split('=');
-					if (parts.Length == 2)
+					if (parts.Length >= 2)
 					{
 						opcodeTable.Add(parts[0], parts[1]);
 					}
@@ -158,9 +159,8 @@ namespace STCM2LPacker
 			var opcodes = new List<uint>();
 			foreach (var instruction in stcm2l.instructions)
 			{
-				if (instruction.extraData != null && 
-					!opcodes.Contains(instruction.opcode)
-					&& instruction._textDataAddressOffset > 0)
+				if (instruction.extraData != null && !opcodes.Contains(instruction.opcode)
+					&& instruction.lines != null && instruction.lines.Count > 0)
 				{
 					string text = Encoding.GetEncoding(_encoding).GetString(instruction.extraData);
 					if (!text.Contains("_"))
@@ -174,7 +174,7 @@ namespace STCM2LPacker
 								countMatch++;
 							}
 						}
-						if (countMatch >= 3)
+						if (countMatch >= 5)
 						{
 							opcodes.Add(instruction.opcode);
 						}
@@ -193,20 +193,22 @@ namespace STCM2LPacker
 			{
 				sw.WriteLine(header);
 				var no = 1;
-				foreach (Instruction instruction in stcm2l.instructions)
+				foreach (var instruction in stcm2l.instructions)
 				{
 					var opcodeHex = instruction.opcode.ToString("x").ToUpper();
-					if (_opcodeTable != null && _opcodeTable.ContainsKey(opcodeHex) && instruction._textDataAddressOffset > 0)
+					if (_opcodeTable != null && _opcodeTable.ContainsKey(opcodeHex) && instruction.lines != null && instruction.lines.Count > 0)
 					{
-						
-						var label = "";
-						_opcodeTable.TryGetValue(opcodeHex, out label);
+						foreach (var line in instruction.lines)
+						{
+							var label = "";
+							_opcodeTable.TryGetValue(opcodeHex, out label);
 
-						var id = String.Format("{0}__{1}__{2}", no, instruction._textDataAddressOffset, label);
-						var text = instruction.textData.text.Replace('"', '“').TrimEnd();
+							var id = String.Format("{0}__{1}_{2}", no, line._paramValueOffset.ToString("x").ToUpper(), label);
+							var text = line.text.Replace('"', '“').TrimEnd();
 
-						sw.WriteLine("{0},\"{1}\",,", id, text);
-						no++;
+							sw.WriteLine("{0},\"{1}\",,", id, text);
+							no++;
+						}
 					}
 				}
 			}
@@ -236,17 +238,20 @@ namespace STCM2LPacker
 
 			using (BinaryWriter b = new BinaryWriter(File.Open(outputFile, FileMode.Open)))
 			{
-				var lines = csvText.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
+				var csvLines = csvText.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
 
 				// Make text data map
-				var textDataMap = new Dictionary<int, TextData>();
+				var lineMap = new Dictionary<int, Line>();
 				var count = 1;
 				foreach (var instruction in stcm2l.instructions)
 				{
-					if (instruction.isText())
+					if (instruction.isText() && instruction.lines != null && instruction.lines.Count > 0)
 					{
-						textDataMap.Add(count, instruction.textData);
-						count++;
+						foreach(var line in instruction.lines)
+						{
+							lineMap.Add(count, line);
+							count++;
+						}
 					}
 				}
 
@@ -254,23 +259,23 @@ namespace STCM2LPacker
 				for (var i = 1; i < count; i++)
 				{
 					// exlcude header line
-					var line = lines[i];
-					TextData textData;
-					textDataMap.TryGetValue(i, out textData);
+					var csvLine = csvLines[i];
+					Line line;
+					lineMap.TryGetValue(i, out line);
 
 					// Parse new text
 					b.Seek(0, SeekOrigin.End);
 					var newOffset = Convert.ToInt32(b.BaseStream.Position);
-					var parts = Regex.Split(line, ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
+					var parts = Regex.Split(csvLine, ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
 					var newText = parts[2].Replace("\"", string.Empty).Replace("\n", " ");
 					byte[] textBytes = Encoding.GetEncoding(_encoding).GetBytes(newText);
 					int newTextLen = textBytes.Length + (4 - textBytes.Length % 4);
 					int newTextOpCode1 = newTextLen / 4;
 					
 					// Write new text to end of file
-					b.Write(textData.zero);
+					b.Write(line.zero);
 					b.Write(newTextOpCode1);
-					b.Write(textData.textOpCode2);
+					b.Write(line.one);
 					b.Write(newTextLen);
 					b.Write(textBytes);
 
@@ -279,7 +284,12 @@ namespace STCM2LPacker
 					b.Write(zeros);
 
 					// Update param value that points to text offset
-					var offset = Convert.ToInt32(Regex.Split(line.Split(',')[0], "__")[1]);
+					var csvId = csvLine.Split(',')[0];
+					var splitParts1 = Regex.Split(csvId, "___");
+					var splitParts2 = Regex.Split(splitParts1[1], "_");
+					var hexOffset = splitParts2[0];
+
+					var offset = Convert.ToInt32(hexOffset, 16);
 					b.Seek(offset, SeekOrigin.Begin);
 					b.Write(newOffset);
 				}
@@ -313,32 +323,35 @@ namespace STCM2LPacker
 				foreach (Instruction instruction in stcm2l.instructions)
 				{
 					var opcodeHex = instruction.opcode.ToString("x").ToUpper();
-					if (_opcodeTable != null && _opcodeTable.ContainsKey(opcodeHex) && instruction._textDataAddressOffset > 0)
+					if (_opcodeTable != null && _opcodeTable.ContainsKey(opcodeHex) && instruction.lines != null && instruction.lines.Count > 0)
 					{
-						var label = "";
-						_opcodeTable.TryGetValue(opcodeHex, out label);
-
-						var id = String.Format("{0}__{1}__{2}", lineCount, instruction._textDataAddressOffset, label);
-						var text = instruction.textData.text.TrimEnd().Replace("\0", string.Empty);
-
-						if (label == "NAME")
+						foreach (var line in instruction.lines)
 						{
-							var index = listNames.IndexOf(text);
-							if (index == -1)
+							var label = "";
+							_opcodeTable.TryGetValue(opcodeHex, out label);
+
+							var id = String.Format("{0}__{1}__{2}", lineCount, line._paramValueOffset, label);
+							var text = line.text.TrimEnd().Replace("\0", string.Empty);
+
+							if (label == "NAME")
 							{
-								listNames.Add(text);
-								addRow(nameSheet, new List<string>() { text, text });
+								var index = listNames.IndexOf(text);
+								if (index == -1)
+								{
+									listNames.Add(text);
+									addRow(nameSheet, new List<string>() { text, text });
+								}
+								index = listNames.IndexOf(text);
+								text = "=TABLE_NAME!B" + (index + 1);
 							}
-							index = listNames.IndexOf(text);
-							text = "=TABLE_NAME!B" + (index + 1);
+
+							var cells = new List<String>();
+							cells.Add(id);
+							cells.Add(text);
+							addRow(sheet, cells);
+
+							lineCount++;
 						}
-
-						var cells = new List<String>();
-						cells.Add(id);
-						cells.Add(text);
-						addRow(sheet, cells);
-
-						lineCount++;
 					}
 				}
 

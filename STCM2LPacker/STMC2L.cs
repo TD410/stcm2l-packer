@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace STCM2LPacker
 {
@@ -30,40 +31,51 @@ namespace STCM2LPacker
 		// Params for Instruction
 		public class Parameter
 		{
-			public List<UInt32> listParam;
-			public List<long> _listParamOffset;
+			public List<ParamValue> values;
 
 			public void read(BinaryReader b)
 			{
-				listParam = new List<UInt32>();
-				_listParamOffset = new List<long>();
+				// Each param has 3 values (3 long number)
+				values = new List<ParamValue>();
 				for (var i = 0; i < 3; i++)
 				{
-					var _paramOffset = b.BaseStream.Position;
-					_listParamOffset.Add(_paramOffset);
-
-					var param = b.ReadUInt32();
-					listParam.Add(param);
+					var value = new ParamValue(b);
+					values.Add(value);
 				}
 			}
 		};
 
+		public class ParamValue
+		{
+			public long _offset;
+			public UInt32 value;
+
+			public ParamValue(BinaryReader b)
+			{
+				_offset = b.BaseStream.Position;
+				value = b.ReadUInt32();
+			}
+		}
+
 		// Text Data for Instruction
-		public class TextData
+		public class Line
 		{
 			public long _address;
+			public long _paramValueOffset;
+			public bool _isValidText;
 			public UInt32 zero;
-			public UInt32 textOpCode1; // op1: textLen/4
-			public UInt32 textOpCode2; // op2: 1
+			public UInt32 numChunk; // textLen/4
+			public UInt32 one;
 			public UInt32 textLen;
-			public String text; // textLen
+			public String text;
 
-			public void read(BinaryReader b)
+			public void read(BinaryReader b, long paramValueOffset)
 			{
 				_address = b.BaseStream.Position;
+				_paramValueOffset = paramValueOffset; // Points to the position of the value #0->2 in a param, that contains a pointer to the text
 				zero = b.ReadUInt32();
-				textOpCode1 = b.ReadUInt32();
-				textOpCode2 = b.ReadUInt32();
+				numChunk = b.ReadUInt32();
+				one = b.ReadUInt32();
 				textLen = b.ReadUInt32();
 				text = Encoding.GetEncoding(_encoding).GetString(b.ReadBytes((int)textLen));
 			}
@@ -74,14 +86,13 @@ namespace STCM2LPacker
 		{
 			public long _address;
 			public bool _isExported;
-			public long _textDataAddressOffset;
 
 			public UInt32 isCall; // 0 or 1
 			public UInt32 opcode; // OpCode
 			public UInt32 paramCount; // Number of params (<16)
 			public UInt32 size; // Total size of the instruction
-			public List<Parameter> parameters;
-			public TextData textData;
+			public List<Parameter> listParams;
+			public List<Line> lines;
 			public byte[] extraData;
 
 			public int _extraDataLen;
@@ -90,31 +101,48 @@ namespace STCM2LPacker
 			{
 				_address = b.BaseStream.Position;
 				_isExported = false;
-				_textDataAddressOffset = 0;
 
 				isCall = b.ReadUInt32();
 				opcode = b.ReadUInt32();
 				paramCount = b.ReadUInt32();
 				size = b.ReadUInt32();
 
-				parameters = new List<Parameter>();
+				listParams = new List<Parameter>();
 				for (var i = 0; i < paramCount; i++)
 				{
-					var parameter = new Parameter();
-					parameter.read(b);
-					parameters.Add(parameter);
+					var param = new Parameter();
+					param.read(b);
+					listParams.Add(param);
 				}
 
 				// Extra data len = size of the instruction - (size of isCall + opcode + paramCount + size field) - (paramCount * paramSize)
 				_extraDataLen = (int)size - 16 - (int)paramCount * 12;
 				if (_extraDataLen > 0)
 				{
-					markParam(b.BaseStream.Position);
 					if (isText())
 					{
-						textData = new TextData();
-						textData.read(b);
-						return 1; // Is text instruction
+						lines = new List<Line>();
+						for (var i = 0; i < paramCount; i++)
+						{
+							// Test which of 3 values in param points to this text line
+							var param = listParams[i];
+							for (var j = 0; j < 3; j++)
+							{
+								if (param.values[j].value == b.BaseStream.Position)
+								{
+									var line = new Line();
+									line.read(b, param.values[j]._offset);
+
+									// Test if line is valid
+									if (isValidLine(i, line))
+									{
+										lines.Add(line);
+									}
+									break;
+								}
+							}
+						}
+						return lines.Count; // Is text instruction
 					}
 					else
 					{
@@ -132,25 +160,27 @@ namespace STCM2LPacker
 				return _extraDataLen > 0 && _opcodeTable != null && _opcodeTable.ContainsKey(opcodeHex);
 			}
 
-			// If the instruction is text, there will be one parameter pointing to the text (extra data)
-			public bool markParam(long extraDataAddress)
+
+			// Special case for specific opcode
+			public bool isValidLine(int idx, Line line)
 			{
-				if (_extraDataLen > 0)
+				String opcodeLabel;
+				_opcodeTable.TryGetValue(opcode.ToString("x").ToUpper(), out opcodeLabel);
+				if (opcodeLabel != null)
 				{
-					foreach (var parameter in parameters)
+					switch (opcodeLabel)
 					{
-						for (var i = 0; i < parameter.listParam.Count; i++)
-						{
-							var param = parameter.listParam[i];
-							if (param == extraDataAddress)
-							{
-								_textDataAddressOffset = parameter._listParamOffset[i];
-								return true;
-							}
-						}
+						// clock zero
+						case "dfltname":
+							return idx == 1;
+						case "text82":
+							List<int> validIdx = new List<int>(new int[] { 1,2,3,5,6,7 });
+							return validIdx.Contains(idx) && line.text.Replace("\0", string.Empty).Length > 0;
+						case "select":
+							return idx % 2 == 0;
 					}
 				}
-				return false;
+				return true;
 			}
 		}
 
@@ -226,7 +256,7 @@ namespace STCM2LPacker
 				var instruction = new Instruction();
 				try
 				{
-					_textLineCount += instruction.read(b); // Read returns 1 if this is a text line
+					_textLineCount += instruction.read(b); // Read returns number of lines if this is a text line
 				}
 				catch (Exception e) {
 					Console.WriteLine(e.ToString());

@@ -86,12 +86,30 @@ namespace STCM2LPacker
 			var bindingList = new BindingList<DataLine>();
 			bindingList.RaiseListChangedEvents = false;
 
+			var lineCount = 1;
+
 			for (var i = 0; i < stcm2l.instructions.Count; i++)
 			{
 				var instruction = stcm2l.instructions[i];
-				if (_opcodeTable != null && instruction.textData == null) continue;
-				var line = new DataLine(instruction, i);
-				bindingList.Add(line);
+				if (_opcodeTable != null && (instruction.lines == null || instruction.lines.Count == 0)) continue;
+				
+				if (instruction.lines != null && instruction.lines.Count > 0)
+				{
+					foreach (var line in instruction.lines)
+					{
+
+						var dataLine = new DataLine(instruction, line, lineCount);
+						bindingList.Add(dataLine);
+						lineCount++;
+					}
+				}
+				else
+				{
+					var dataLine = new DataLine(instruction, lineCount);
+					bindingList.Add(dataLine);
+					lineCount++;
+				}
+				
 			}
 			bindingList.ResetBindings();
 			dataGridView1.AutoGenerateColumns = true;
@@ -116,9 +134,26 @@ namespace STCM2LPacker
 				No = no;
 				Opcode = instruction.opcode.ToString("x").ToUpper();
 				Text = "";
-				if (instruction.textData != null)
+				if (instruction.extraData != null)
 				{
-					Text = instruction.textData.text;
+					Text = Encoding.GetEncoding(_encoding).GetString(instruction.extraData);
+				}
+				string labelValue = "";
+				if (_opcodeTable != null)
+				{
+					_opcodeTable.TryGetValue(Opcode, out labelValue);
+				}
+				Label = labelValue;
+			}
+
+			public DataLine(Instruction instruction, Line line, int no)
+			{
+				No = no;
+				Opcode = instruction.opcode.ToString("x").ToUpper();
+				Text = "";
+				if (line != null)
+				{
+					Text = line.text;
 				}
 				else if (instruction.extraData != null)
 				{
