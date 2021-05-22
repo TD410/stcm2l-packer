@@ -207,7 +207,7 @@
 			this.openCharTableTextBox.Size = new System.Drawing.Size(438, 20);
 			this.openCharTableTextBox.TabIndex = 14;
 			// 
-			// STCM2LPackerGUI
+			// STCM2LPacker
 			// 
 			this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
 			this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
@@ -228,8 +228,8 @@
 			this.Controls.Add(this.menuStrip1);
 			this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
 			this.MainMenuStrip = this.menuStrip1;
-			this.Name = "STCM2LPackerGUI";
-			this.Text = "STCM2LPackerGUI";
+			this.Name = "STCM2LPacker";
+			this.Text = "STCM2LPacker";
 			this.menuStrip1.ResumeLayout(false);
 			this.menuStrip1.PerformLayout();
 			((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).EndInit();
