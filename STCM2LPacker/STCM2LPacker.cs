@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using CsvHelper;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -23,10 +25,18 @@ namespace STCM2LPacker
 			// Drag & Drop
 			if (args != null && args.Length > 0)
 			{
-				string mode = "export";
+				var inputPath = args[0];
+				var isDirectory = File.GetAttributes(inputPath).HasFlag(FileAttributes.Directory);
+
+				string mode = inputPath.EndsWith(".xlsx") ? "import-excel" : 
+					inputPath.EndsWith(".csv") ? "import" :
+					isDirectory ? "export-excel" :
+					"export";
+
 				string encoding = "shift-jis";
 				string opcode = "opcode.txt";
 				string table = "table.txt";
+
 				foreach (var arg in args)
 				{
 					if (arg.StartsWith("--mode"))
@@ -46,9 +56,14 @@ namespace STCM2LPacker
 						table = arg.Split('=')[1];
 					}
 				}
-				string opcodeFile = Path.Combine(args[0], opcode);
-				string tableFile = Path.Combine(args[0], table);
-				ReadFiles(args[0], opcodeFile, tableFile, mode, encoding);
+				string opcodeFile = Path.Combine(inputPath, opcode);
+				string tableFile = Path.Combine(inputPath, table);
+
+				string stmc2lPath = mode.StartsWith("import") ?
+					inputPath.Replace(".xlsx", "/in").Replace(".csv", "/in") :
+					inputPath;
+
+				Process(stmc2lPath, inputPath, opcodeFile, tableFile, mode, encoding);
 			}
 			// Run GUI
 			else
@@ -59,36 +74,20 @@ namespace STCM2LPacker
 			}
 		}
 
-		public static void ReadFiles(string inputPath, string opcodeFile, string tableFile, string mode, string encoding)
+		/** COMMON FUNC **/
+
+		public static void Process(string stmc2lPath, string excelPath, string opcodeFile, string tableFile, string mode, string encoding)
 		{
-			// Get files
-			FileAttributes attr = File.GetAttributes(inputPath);
-			string[] inputFiles = attr.HasFlag(FileAttributes.Directory) ?
-				Directory.GetFiles(inputPath, "*", SearchOption.AllDirectories)
-				: new string[] { inputPath };
-
-			// Read opcode
-			ReadOpCodeTable(opcodeFile);
-
-			// Read files
-			var stcm2lMap = new Dictionary<string, STCM2L>();
-			foreach (var file in inputFiles)
-			{
-				var stcm2l = ReadFile(file, encoding);
-				if (stcm2l != null)
-				{
-					stcm2lMap.Add(file, stcm2l);
-				}
-			}
+			var stcm2lMap = ReadSTMC2LFiles(stmc2lPath, opcodeFile, tableFile, mode, encoding);
 
 			// Export
 			if (mode.StartsWith("export"))
 			{
 				if (mode == "export-excel")
 				{
-					ExportExcel(stcm2lMap, inputPath + ".xlsx");
+					ExportExcel(stcm2lMap, stmc2lPath + ".xlsx");
 				}
-				else
+				else if (mode == "export")
 				{
 					foreach (var file in stcm2lMap.Keys)
 					{
@@ -97,21 +96,52 @@ namespace STCM2LPacker
 						if (stcm2l != null)
 						{
 							var outputFile = file + ".csv";
-							Export(stcm2l, outputFile);
+							ExportCSV(stcm2l, outputFile);
 						}
 					}
 				}
 			}
 
 			// Import & Patch
-			else if (mode == "import")
+			else if (mode.StartsWith("import"))
 			{
-				string outputPath = Path.Combine(Path.GetDirectoryName(inputPath), "/out");
-				
+				if (mode == "import-excel")
+				{
+					string outputPath = Path.Combine(Path.GetDirectoryName(stmc2lPath), "/out");
+				}
+				else if (mode == "import")
+				{
+
+				}
 			}
 		}
 
-		public static STCM2L ReadFile(string inputFile, string encoding = "shift-jis")
+		public static Dictionary<string, STCM2L> ReadSTMC2LFiles(string stmc2lPath, string opcodeFile, string tableFile, string mode, string encoding)
+		{
+			// Get files
+			FileAttributes attr = File.GetAttributes(stmc2lPath);
+			string[] inputFiles = attr.HasFlag(FileAttributes.Directory) ?
+				Directory.GetFiles(stmc2lPath, "*", SearchOption.AllDirectories)
+				: new string[] { stmc2lPath };
+
+			// Read opcode
+			ReadOpCodeTable(opcodeFile);
+
+			// Read files
+			var stcm2lMap = new Dictionary<string, STCM2L>();
+			foreach (var file in inputFiles)
+			{
+				var stcm2l = ReadSTMC2LFile(file, encoding);
+				if (stcm2l != null)
+				{
+					stcm2lMap.Add(file, stcm2l);
+				}
+			}
+
+			return stcm2lMap;
+		}
+
+		public static STCM2L ReadSTMC2LFile(string inputFile, string encoding = "shift-jis")
 		{
 			STCM2L stcm2l = null;
 			// Build STCM2L file structure
@@ -183,8 +213,10 @@ namespace STCM2LPacker
 			}
 			return opcodes;
 		}
+		
+		/** EXPORT **/
 
-		public static void Export(STCM2L stcm2l, string outputFile, string header = "ID,Japanese,Vietnamese,Note")
+		public static void ExportCSV(STCM2L stcm2l, string outputFile, string header = "ID,Japanese,Vietnamese,Note")
 		{
 			if (stcm2l._textLineCount == 0) return;
 
@@ -210,88 +242,6 @@ namespace STCM2LPacker
 							no++;
 						}
 					}
-				}
-			}
-		}
-
-		public static void Import(STCM2L stcm2l, string csvFile, string inputFile, string outputFile, string tableFile = "")
-		{
-			// Replace char table
-			var csvText = File.ReadAllText(csvFile);
-			if (tableFile != "")
-			{
-				var table = File.ReadAllLines(tableFile);
-				foreach (var line in table)
-				{
-					var parts = line.Split('=');
-					if (parts.Length == 2)
-					{
-						csvText = csvText.Replace(parts[0], parts[1]);
-					}
-				}
-			}
-
-			// Copy old file to new file and work on new file
-			File.Copy(inputFile, outputFile, true);
-			FileInfo fileInfo = new FileInfo(outputFile);
-			fileInfo.IsReadOnly = false;
-
-			using (BinaryWriter b = new BinaryWriter(File.Open(outputFile, FileMode.Open)))
-			{
-				var csvLines = csvText.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
-
-				// Make text data map
-				var lineMap = new Dictionary<int, Line>();
-				var count = 1;
-				foreach (var instruction in stcm2l.instructions)
-				{
-					if (instruction.isText() && instruction.lines != null && instruction.lines.Count > 0)
-					{
-						foreach(var line in instruction.lines)
-						{
-							lineMap.Add(count, line);
-							count++;
-						}
-					}
-				}
-
-				// Loop through lines in the CSV
-				for (var i = 1; i < count; i++)
-				{
-					// exlcude header line
-					var csvLine = csvLines[i];
-					Line line;
-					lineMap.TryGetValue(i, out line);
-
-					// Parse new text
-					b.Seek(0, SeekOrigin.End);
-					var newOffset = Convert.ToInt32(b.BaseStream.Position);
-					var parts = Regex.Split(csvLine, ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
-					var newText = parts[2].Replace("\"", string.Empty).Replace("\n", " ");
-					byte[] textBytes = Encoding.GetEncoding(_encoding).GetBytes(newText);
-					int newTextLen = textBytes.Length + (4 - textBytes.Length % 4);
-					int newTextOpCode1 = newTextLen / 4;
-					
-					// Write new text to end of file
-					b.Write(line.zero);
-					b.Write(newTextOpCode1);
-					b.Write(line.one);
-					b.Write(newTextLen);
-					b.Write(textBytes);
-
-					// Pad zero byte to text so the length is divisible by 4
-					byte[] zeros = new byte[newTextLen - textBytes.Length];
-					b.Write(zeros);
-
-					// Update param value that points to text offset
-					var csvId = csvLine.Split(',')[0];
-					var splitParts1 = Regex.Split(csvId, "___");
-					var splitParts2 = Regex.Split(splitParts1[1], "_");
-					var hexOffset = splitParts2[0];
-
-					var offset = Convert.ToInt32(hexOffset, 16);
-					b.Seek(offset, SeekOrigin.Begin);
-					b.Write(newOffset);
 				}
 			}
 		}
@@ -429,6 +379,182 @@ namespace STCM2LPacker
 				}
 			}
 			return row;
+		}
+
+		/** IMPORT **/
+
+		public class CSVLine
+		{
+			public string id;
+			public string japanese;
+			public string vietnamese;
+			public string note;
+		}
+
+		public class ImportLine
+		{
+			public byte[] textBytes;
+			public int offset;
+		}
+
+		public static void Repack(STCM2L stcm2l, List<ImportLine> importLines, string inputSTMCFile, string outputSTMCFile, string tableFile = "")
+		{
+			// Copy old file to new file and work on new file
+			File.Copy(inputSTMCFile, outputSTMCFile, true);
+			FileInfo fileInfo = new FileInfo(outputSTMCFile);
+			fileInfo.IsReadOnly = false;
+
+
+			// Make text data map
+			var lineMap = new Dictionary<int, Line>();
+			var count = 0;
+			foreach (var instruction in stcm2l.instructions)
+			{
+				if (instruction.isText() && instruction.lines != null && instruction.lines.Count > 0)
+				{
+					foreach (var line in instruction.lines)
+					{
+						lineMap.Add(count, line);
+						count++;
+					}
+				}
+			}
+
+			using (BinaryWriter b = new BinaryWriter(File.Open(outputSTMCFile, FileMode.Open)))
+			{	
+				// Loop through lines in the CSV
+				for (var i = 0; i < count; i++)
+				{
+					var importLine = importLines[i];
+					Line line;
+					lineMap.TryGetValue(i, out line);
+
+					// Parse new text
+					b.Seek(0, SeekOrigin.End);
+					var newOffset = Convert.ToInt32(b.BaseStream.Position);
+
+					byte[] textBytes = importLine.textBytes;
+					int newTextLen = textBytes.Length + (4 - textBytes.Length % 4);
+					int newTextOpCode1 = newTextLen / 4;
+
+					// Write new text to end of file
+					b.Write(line.zero);
+					b.Write(newTextOpCode1);
+					b.Write(line.one);
+					b.Write(newTextLen);
+					b.Write(textBytes);
+
+					// Pad zero byte to text so the length is divisible by 4
+					byte[] zeros = new byte[newTextLen - textBytes.Length];
+					b.Write(zeros);
+
+					// Update param value that points to text offset			
+					var offset = importLine.offset;
+					b.Seek(offset, SeekOrigin.Begin);
+					b.Write(newOffset);
+				}
+			}
+		}
+
+		public static void ImportCSV(STCM2L stcm2l, string csvFile, string inputSTMCFile, string outputSTMCFile, string tableFile)
+		{
+			/*
+			// Read csv
+			var csvText = File.ReadAllText(csvFile);
+			
+			// Replace char table
+			if (tableFile != "")
+			{
+				var table = File.ReadAllLines(tableFile);
+				foreach (var line in table)
+				{
+					var parts = line.Split('=');
+					if (parts.Length == 2)
+					{
+						csvText = csvText.Replace(parts[0], parts[1]);
+					}
+				}
+			}
+
+			// Split CSV into lines
+			var csvLines = csvText.Split(new[] { Environment.NewLine }, StringSplitOptions.None).ToList();
+			var importLines = new List<ImportLine>();
+			csvLines.ForEach(csvLine =>
+			{
+				// Split 1 line
+				var parts = Regex.Split(csvLine, ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
+				var newText = parts[2];
+
+				// Replace quote
+				newText = Regex.Replace(newText, "^\"\"\"", "“");
+				newText = Regex.Replace(newText, "\"\"\"$", "”");
+				newText = Regex.Replace(newText, "^\"", string.Empty);
+				newText = Regex.Replace(newText, "\"$", string.Empty);
+
+				// Replace new line character
+				newText = Regex.Replace(newText, "\n", string.Empty);
+
+				// Get text bytes
+				byte[] textBytes = Encoding.GetEncoding(_encoding).GetBytes(newText);
+
+				// Get offset
+				var csvId = csvLine.Split(',')[0];
+				var splitParts1 = Regex.Split(csvId, "___");
+				var splitParts2 = Regex.Split(splitParts1[1], "_");
+				var hexOffset = splitParts2[0];
+				int offset = Convert.ToInt32(hexOffset, 16);
+
+				var importLine = new ImportLine();
+				importLine.textBytes = textBytes;
+				importLine.offset = offset;
+				importLines.Add(importLine);
+			}); */
+
+			var table = File.ReadAllLines(tableFile);
+			using (var reader = new StreamReader(csvFile))
+			{
+				using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
+				{
+					var csvLines = csv.GetRecords<CSVLine>().ToList();
+					var importLines = new List<ImportLine>();
+					csvLines.ForEach(csvLine =>
+					{
+						// Get text
+						var newText = csvLine.vietnamese;
+						foreach (var line in table)
+						{
+							var parts = line.Split('=');
+							if (parts.Length == 2)
+							{
+								newText = newText.Replace(parts[0], parts[1]);
+							}
+						}
+
+						// Replace new line character
+						newText = Regex.Replace(newText, "\n", "#n");
+
+						// Get text bytes
+						byte[] textBytes = Encoding.GetEncoding(_encoding).GetBytes(newText);
+
+						// Get offset
+						var csvId = csvLine.id;
+						var splitParts1 = Regex.Split(csvId, "___");
+						var splitParts2 = Regex.Split(splitParts1[1], "_");
+						var hexOffset = splitParts2[0];
+						int offset = Convert.ToInt32(hexOffset, 16);
+
+						var importLine = new ImportLine();
+						importLine.textBytes = textBytes;
+						importLine.offset = offset;
+						importLines.Add(importLine);
+					});
+				}
+			}
+		}
+
+		public static void ImportExcel(string excelFile, Dictionary<string, STCM2L> stcm2lMap)
+		{
+
 		}
 	}
 }

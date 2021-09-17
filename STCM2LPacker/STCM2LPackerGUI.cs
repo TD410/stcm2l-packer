@@ -82,7 +82,7 @@ namespace STCM2LPacker
 
 			// Populate list view
 			dataGridView1.DataSource = null;
-			stcm2l = STCM2LPacker.ReadFile(filePath);
+			stcm2l = STCM2LPacker.ReadSTMC2LFile(filePath);
 			var bindingList = new BindingList<DataLine>();
 			bindingList.RaiseListChangedEvents = false;
 
@@ -187,7 +187,7 @@ namespace STCM2LPacker
 			if (dlg.ShowDialog() == DialogResult.OK)
 			{
 				var outputFile = dlg.FileName;
-				STCM2LPacker.Export(stcm2l, outputFile);
+				STCM2LPacker.ExportCSV(stcm2l, outputFile);
 				MessageBox.Show("Done.");
 			}
 		}
@@ -221,7 +221,7 @@ namespace STCM2LPacker
 					var outputFile = dlg2.FileName;
 					var tableFile = openCharTableTextBox.Text;
 					
-					STCM2LPacker.Import(stcm2l, csvFile, stcm2lFile, outputFile, tableFile);
+					STCM2LPacker.Repack(stcm2l, csvFile, stcm2lFile, outputFile, tableFile);
 					MessageBox.Show("Done.");
 				}
 			}

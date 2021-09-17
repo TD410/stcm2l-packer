@@ -166,21 +166,27 @@ namespace STCM2LPacker
 			{
 				String opcodeLabel;
 				_opcodeTable.TryGetValue(opcode.ToString("x").ToUpper(), out opcodeLabel);
+				var notEmpty = line.text.Replace("\0", string.Empty).Length > 0;
+				var pass = true;
 				if (opcodeLabel != null)
 				{
+					
 					switch (opcodeLabel)
 					{
 						// clock zero
 						case "dfltname":
-							return idx == 1;
+							pass = idx == 1;
+							break;
 						case "text82":
 							List<int> validIdx = new List<int>(new int[] { 1,2,3,5,6,7 });
-							return validIdx.Contains(idx) && line.text.Replace("\0", string.Empty).Length > 0;
+							pass = validIdx.Contains(idx);
+							break;
 						case "select":
-							return idx % 2 == 0;
+							pass = idx % 2 == 0;
+							break;
 					}
 				}
-				return true;
+				return notEmpty && pass;
 			}
 		}
 
