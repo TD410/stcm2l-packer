@@ -7,14 +7,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "STCM2LPacker", "STCM2LPacke
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		CLI|Any CPU = CLI|Any CPU
-		GUI|Any CPU = GUI|Any CPU
+		Debug|Any CPU = Debug|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{288C9F98-CE77-4252-B895-94623E46F04E}.CLI|Any CPU.ActiveCfg = CLI|Any CPU
-		{288C9F98-CE77-4252-B895-94623E46F04E}.CLI|Any CPU.Build.0 = CLI|Any CPU
-		{288C9F98-CE77-4252-B895-94623E46F04E}.GUI|Any CPU.ActiveCfg = GUI|Any CPU
-		{288C9F98-CE77-4252-B895-94623E46F04E}.GUI|Any CPU.Build.0 = GUI|Any CPU
+		{288C9F98-CE77-4252-B895-94623E46F04E}.Debug|Any CPU.ActiveCfg = Repack|Any CPU
+		{288C9F98-CE77-4252-B895-94623E46F04E}.Debug|Any CPU.Build.0 = Repack|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -184,6 +184,9 @@ namespace STCM2LPacker
 						case "select":
 							pass = idx % 2 == 0;
 							break;
+
+							// need to write the rest.
+							// pay attention to 4CF in file 160, 5 match => only 2 valid
 					}
 				}
 				return notEmpty && pass;
